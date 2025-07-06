@@ -418,7 +418,7 @@ Use the buttons below to get started!"""
         """Calculate the next scheduling time"""
         last_time = self.user_last_scheduled.get(user_id, datetime.now())
         
-        random_hours = random.uniform(1, 3)
+        random_hours = random.uniform(1, 2)
         random_minutes = random.randint(0, 59)
         
         next_time = last_time + timedelta(hours=random_hours, minutes=random_minutes)
@@ -489,7 +489,7 @@ Use the buttons below to get started!"""
     
     async def process_media_group_after_delay(self, group_id: str, user_settings: dict, sample_message: Message):
         """Process media group after collecting all items"""
-        await asyncio.sleep(2)  # Wait for all media items to arrive
+        await asyncio.sleep(5)  # Wait for all media items to arrive
         
         if group_id in self.media_group_buffer:
             media_items = self.media_group_buffer[group_id]

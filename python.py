@@ -822,7 +822,7 @@ Use the buttons below to get started!"""
         
         # Start health server
         await self.health_server.start_server()
-        logger.info(f"Health server started on port {self.port}")
+        logger.info(f"Health server started on port {PORT}")
         
         # Start Telegram bot
         await self.app.start()

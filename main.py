@@ -27,12 +27,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration
-API_ID = int(os.getenv('API_ID'))
-API_HASH = os.getenv('API_HASH')
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-MONGODB_URI = os.getenv('MONGODB_URI')
+API_ID = int(os.getenv('API_ID', '1560761'))
+API_HASH = os.getenv('API_HASH', 'd7e3b89b16213382fa173a9c3b5d6cc4')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '7984590797:AAEgnVfl6QDWTlTIpB7hWresGiTkmnbMI88')
+MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb+srv://wtflinksofficial:wtflinksofficial@cluster0.1uld4.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
 DATABASE_NAME = os.getenv('DATABASE_NAME', 'telegram_scheduler')
-ADMIN_USER_ID = int(os.getenv('ADMIN_USER_ID'))
+ADMIN_USER_ID = int(os.getenv('ADMIN_USER_ID', '1251111009'))
 PORT = int(os.getenv('PORT', 8000))
 
 # Timezone configuration
@@ -178,6 +178,86 @@ class MongoDBManager:
         result = await self.scheduled_posts.delete_many(query)
         return result.deleted_count
     
+    async def delete_channel_data(self, channel_id: str, user_id: int = None) -> Dict[str, int]:
+        """Delete all data related to a specific channel"""
+        query = {'channel_id': channel_id}
+        if user_id:
+            query['user_id'] = user_id
+        
+        # Delete scheduled posts for the channel
+        posts_result = await self.scheduled_posts.delete_many(query)
+        
+        # Delete channel settings
+        settings_query = {'channel_id': channel_id}
+        if user_id:
+            settings_query['user_id'] = user_id
+        settings_result = await self.bot_settings.delete_many(settings_query)
+        
+        return {
+            'posts_deleted': posts_result.deleted_count,
+            'settings_deleted': settings_result.deleted_count,
+            'total_deleted': posts_result.deleted_count + settings_result.deleted_count
+        }
+    
+    async def empty_database(self) -> Dict[str, int]:
+        """Delete all data from the database (complete wipe)"""
+        # Delete all scheduled posts
+        posts_result = await self.scheduled_posts.delete_many({})
+        
+        # Delete all bot settings
+        settings_result = await self.bot_settings.delete_many({})
+        
+        return {
+            'posts_deleted': posts_result.deleted_count,
+            'settings_deleted': settings_result.deleted_count,
+            'total_deleted': posts_result.deleted_count + settings_result.deleted_count
+        }
+    
+    async def get_all_channels_data(self, user_id: int = None) -> Dict:
+        """Get summary of all channels data"""
+        query = {}
+        if user_id:
+            query['user_id'] = user_id
+        
+        # Get unique channels with post counts
+        pipeline = [
+            {'$match': query},
+            {'$group': {
+                '_id': '$channel_id',
+                'pending_posts': {
+                    '$sum': {'$cond': [{'$eq': ['$status', 'pending']}, 1, 0]}
+                },
+                'sent_posts': {
+                    '$sum': {'$cond': [{'$eq': ['$status', 'sent']}, 1, 0]}
+                },
+                'total_posts': {'$sum': 1}
+            }}
+        ]
+        
+        channels_data = {}
+        async for channel in self.scheduled_posts.aggregate(pipeline):
+            channels_data[channel['_id']] = {
+                'pending_posts': channel['pending_posts'],
+                'sent_posts': channel['sent_posts'],
+                'total_posts': channel['total_posts']
+            }
+        
+        # Get channel names from settings
+        settings_cursor = self.bot_settings.find(query)
+        async for setting in settings_cursor:
+            channel_id = setting['channel_id']
+            if channel_id in channels_data:
+                channels_data[channel_id]['channel_name'] = setting.get('channel_name', 'Unknown')
+            else:
+                channels_data[channel_id] = {
+                    'pending_posts': 0,
+                    'sent_posts': 0,
+                    'total_posts': 0,
+                    'channel_name': setting.get('channel_name', 'Unknown')
+                }
+        
+        return channels_data
+    
     async def set_user_channel(self, user_id: int, channel_id: str, channel_name: str = None):
         """Set channel ID for a user"""
         await self.bot_settings.update_one(
@@ -253,6 +333,10 @@ class TelegramSchedulerBot:
         self.app.on_message(filters.command("clear"))(self.clear_command)
         self.app.on_message(filters.command("help"))(self.help_command)
         self.app.on_message(filters.command("channels"))(self.channels_command)
+        # NEW COMMANDS
+        self.app.on_message(filters.command("deletechannel"))(self.delete_channel_command)
+        self.app.on_message(filters.command("emptydatabase"))(self.empty_database_command)
+        self.app.on_message(filters.command("allchannels"))(self.all_channels_command)
         self.app.on_message(~filters.command(""))(self.handle_message)
         self.app.on_callback_query()(self.handle_callback)
     
@@ -271,6 +355,7 @@ class TelegramSchedulerBot:
             [InlineKeyboardButton("🔧 Set Channel", callback_data="set_channel")],
             [InlineKeyboardButton("📊 Status", callback_data="status")],
             [InlineKeyboardButton("📺 All Channels", callback_data="channels")],
+            [InlineKeyboardButton("🗑️ Management", callback_data="management")],
             [InlineKeyboardButton("❓ Help", callback_data="help")]
         ])
         
@@ -413,6 +498,118 @@ Use the buttons below to get started!"""
         
         await self.show_channels(message)
     
+    # NEW COMMANDS
+    async def delete_channel_command(self, client: Client, message: Message):
+        """Handle /deletechannel command - Delete all data for a specific channel"""
+        if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
+            return
+        
+        if len(message.command) < 2:
+            await message.reply_text(
+                "🗑️ **Delete Channel Data**\n\n"
+                "**Usage:** `/deletechannel CHANNEL_ID`\n\n"
+                "**Examples:**\n"
+                "• `/deletechannel @mychannel`\n"
+                "• `/deletechannel -1001234567890`\n\n"
+                "⚠️ **Warning:** This will delete ALL posts and settings for the specified channel!"
+            )
+            return
+        
+        channel_id = message.command[1]
+        
+        # If it's a username, try to get the actual chat ID
+        try:
+            if channel_id.startswith('@'):
+                chat = await client.get_chat(channel_id)
+                channel_id = str(chat.id)
+        except:
+            pass
+        
+        # Confirm deletion
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ Cancel", callback_data="cancel_delete")],
+            [InlineKeyboardButton("🗑️ Confirm Delete", callback_data=f"confirm_delete_channel:{channel_id}")]
+        ])
+        
+        await message.reply_text(
+            f"⚠️ **Confirm Channel Data Deletion**\n\n"
+            f"🆔 **Channel ID:** `{channel_id}`\n\n"
+            f"**This will permanently delete:**\n"
+            f"• All scheduled posts\n"
+            f"• All sent posts history\n"
+            f"• Channel settings\n\n"
+            f"**Are you sure you want to proceed?**",
+            reply_markup=keyboard
+        )
+    
+    async def empty_database_command(self, client: Client, message: Message):
+        """Handle /emptydatabase command - Delete ALL data from MongoDB"""
+        if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
+            return
+        
+        # Double confirmation for database wipe
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ Cancel", callback_data="cancel_empty_db")],
+            [InlineKeyboardButton("💥 CONFIRM EMPTY DATABASE", callback_data="confirm_empty_db")]
+        ])
+        
+        await message.reply_text(
+            "🚨 **DANGEROUS OPERATION**\n\n"
+            "⚠️ **YOU ARE ABOUT TO DELETE ALL DATA!**\n\n"
+            "**This will permanently delete:**\n"
+            "• ALL scheduled posts for ALL channels\n"
+            "• ALL sent posts history for ALL channels\n"
+            "• ALL channel settings\n"
+            "• ALL user data\n\n"
+            "🔥 **THIS ACTION CANNOT BE UNDONE!**\n\n"
+            "**Are you absolutely sure you want to proceed?**",
+            reply_markup=keyboard
+        )
+    
+    async def all_channels_command(self, client: Client, message: Message):
+        """Handle /allchannels command - Show data for all channels"""
+        if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
+            return
+        
+        channels_data = await self.db.get_all_channels_data(message.from_user.id)
+        
+        if not channels_data:
+            await message.reply_text("📺 **No channels found!**")
+            return
+        
+        channels_text = "📊 **All Channels Overview**\n\n"
+        
+        total_pending = 0
+        total_sent = 0
+        
+        for i, (channel_id, data) in enumerate(channels_data.items(), 1):
+            channel_name = data.get('channel_name', 'Unknown')
+            pending = data['pending_posts']
+            sent = data['sent_posts']
+            
+            total_pending += pending
+            total_sent += sent
+            
+            channels_text += f"📺 **{i}. {channel_name}**\n"
+            channels_text += f"🆔 `{channel_id}`\n"
+            channels_text += f"⏳ Pending: {pending} | ✅ Sent: {sent}\n"
+            channels_text += f"📊 Total: {data['total_posts']}\n\n"
+        
+        channels_text += f"📈 **Overall Statistics:**\n"
+        channels_text += f"⏳ Total Pending: {total_pending}\n"
+        channels_text += f"✅ Total Sent: {total_sent}\n"
+        channels_text += f"📺 Total Channels: {len(channels_data)}"
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Refresh", callback_data="all_channels")],
+            [InlineKeyboardButton("🗑️ Management", callback_data="management")]
+        ])
+        
+        await message.reply_text(channels_text, reply_markup=keyboard)
+    
     async def handle_callback(self, client: Client, callback_query: CallbackQuery):
         """Handle inline keyboard callbacks"""
         if callback_query.from_user.id != ADMIN_USER_ID:
@@ -436,8 +633,97 @@ Use the buttons below to get started!"""
             await self.show_channels(callback_query.message, edit=True)
         elif data == "help":
             await self.show_help(callback_query.message, edit=True)
+        elif data == "management":
+            await self.show_management_menu(callback_query.message, edit=True)
+        elif data == "all_channels":
+            channels_data = await self.db.get_all_channels_data(callback_query.from_user.id)
+            
+            if not channels_data:
+                await callback_query.message.edit_text("📺 **No channels found!**")
+                await callback_query.answer()
+                return
+            
+            channels_text = "📊 **All Channels Overview**\n\n"
+            
+            total_pending = 0
+            total_sent = 0
+            
+            for i, (channel_id, data) in enumerate(channels_data.items(), 1):
+                channel_name = data.get('channel_name', 'Unknown')
+                pending = data['pending_posts']
+                sent = data['sent_posts']
+                
+                total_pending += pending
+                total_sent += sent
+                
+                channels_text += f"📺 **{i}. {channel_name}**\n"
+                channels_text += f"🆔 `{channel_id}`\n"
+                channels_text += f"⏳ Pending: {pending} | ✅ Sent: {sent}\n"
+                channels_text += f"📊 Total: {data['total_posts']}\n\n"
+            
+            channels_text += f"📈 **Overall Statistics:**\n"
+            channels_text += f"⏳ Total Pending: {total_pending}\n"
+            channels_text += f"✅ Total Sent: {total_sent}\n"
+            channels_text += f"📺 Total Channels: {len(channels_data)}"
+            
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Refresh", callback_data="all_channels")],
+                [InlineKeyboardButton("🗑️ Management", callback_data="management")]
+            ])
+            
+            await callback_query.message.edit_text(channels_text, reply_markup=keyboard)
+        elif data.startswith("confirm_delete_channel:"):
+            channel_id = data.split(":", 1)[1]
+            result = await self.db.delete_channel_data(channel_id, callback_query.from_user.id)
+            
+            await callback_query.message.edit_text(
+                f"✅ **Channel data deleted successfully!**\n\n"
+                f"🆔 **Channel ID:** `{channel_id}`\n"
+                f"🗑️ **Posts deleted:** {result['posts_deleted']}\n"
+                f"⚙️ **Settings deleted:** {result['settings_deleted']}\n"
+                f"📊 **Total deleted:** {result['total_deleted']}\n"
+                f"🕐 **Time:** {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}"
+            )
+        elif data == "confirm_empty_db":
+            result = await self.db.empty_database()
+            
+            # Clear user scheduling cache
+            self.user_last_scheduled.clear()
+            
+            await callback_query.message.edit_text(
+                f"💥 **DATABASE EMPTIED SUCCESSFULLY!**\n\n"
+                f"🗑️ **Posts deleted:** {result['posts_deleted']}\n"
+                f"⚙️ **Settings deleted:** {result['settings_deleted']}\n"
+                f"📊 **Total deleted:** {result['total_deleted']}\n"
+                f"🕐 **Time:** {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}\n\n"
+                f"🔄 **All data has been permanently deleted!**"
+            )
+        elif data in ["cancel_delete", "cancel_empty_db"]:
+            await callback_query.message.edit_text("❌ **Operation cancelled.**")
         
         await callback_query.answer()
+    
+    async def show_management_menu(self, message: Message, edit: bool = False):
+        """Show management menu"""
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 All Channels Overview", callback_data="all_channels")],
+            [InlineKeyboardButton("🔄 Back to Main", callback_data="start")]
+        ])
+        
+        management_text = """🗑️ **Data Management**
+
+**Available Commands:**
+
+🗑️ `/deletechannel CHANNEL_ID` - Delete all data for a specific channel
+💥 `/emptydatabase` - Delete ALL data from database
+📊 `/allchannels` - View all channels overview
+
+**Quick Actions:**"""
+        
+        if edit:
+            await message.edit_text(management_text, reply_markup=keyboard)
+        else:
+            await message.reply_text(management_text, reply_markup=keyboard)
     
     async def show_status(self, message: Message, edit: bool = False):
         """Show status information"""
@@ -515,6 +801,11 @@ Use the buttons below to get started!"""
 • `/clear` - Clear pending posts for active channel
 • `/help` - Show this help message
 
+**🗑️ Management Commands:**
+• `/deletechannel CHANNEL_ID` - Delete all data for specific channel
+• `/emptydatabase` - Delete ALL data from database (DANGEROUS!)
+• `/allchannels` - View overview of all channels
+
 **📝 How to Use:**
 1. Set your channel with `/setchannel @yourchannel`
 2. Forward any post to me (photos, videos, albums, text)
@@ -553,8 +844,8 @@ Use the buttons below to get started!"""
         
         last_time = self.user_last_scheduled[user_id].get(channel_id, get_ist_time())
         
-        random_hours = random.uniform(1, 3)
-        random_minutes = random.randint(0, 59)
+        random_hours = random.uniform(1, 2)
+        random_minutes = random.randint(0, 26)
         
         next_time = last_time + timedelta(hours=random_hours, minutes=random_minutes)
         self.user_last_scheduled[user_id][channel_id] = next_time
@@ -822,7 +1113,7 @@ Use the buttons below to get started!"""
         
         # Start health server
         await self.health_server.start_server()
-        logger.info(f"Health server started on port {self.port}")
+        logger.info(f"Health server started on port {PORT}")
         
         # Start Telegram bot
         await self.app.start()

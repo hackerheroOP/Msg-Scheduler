@@ -1,16 +1,15 @@
 import asyncio
 import logging
 import os
+import random
 from datetime import datetime, timedelta, timezone
-import pytz
-from typing import Optional, Dict, Any, List
-from motor.motor_asyncio import AsyncIOMotorClient
+from typing import Dict, List, Optional
+import pymongo
+from pymongo import MongoClient
 from pyrogram import Client, filters
-from pyrogram.types import Message
-from pyrogram.errors import FloodWait, UserIsBlocked, PeerIdInvalid
-import json
+from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiohttp import web
-from contextlib import asynccontextmanager
+import aiohttp
 
 # Configuration
 API_ID = int(os.getenv('API_ID', '1560761'))

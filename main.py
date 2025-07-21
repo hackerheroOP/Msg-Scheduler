@@ -124,8 +124,8 @@ async def handle_forwarded_post(client, message: Message):
         last_post = await db.get_last_post(channel_id)
         
         # Calculate random delay (1-3 hours)
-        random_hours = random.uniform(1, 3)
-        random_minutes = int(random_hours * 60)
+        random_hours = random.uniform(1, 2)
+        random_minutes = int(random_hours * 30)
         
         # Calculate scheduled time in IST
         if last_post:

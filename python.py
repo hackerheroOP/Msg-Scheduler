@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 # Configuration
 API_ID = int(os.getenv('API_ID', '1560761'))
 API_HASH = os.getenv('API_HASH', 'd7e3b89b16213382fa173a9c3b5d6cc4')
-BOT_TOKEN = os.getenv('BOT_TOKEN', '7984590797:AAGa9XAQg-FoXNG7-lfSHixHrISdtAChMMU')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '7984590797:AAEgnVfl6QDWTlTIpB7hWresGiTkmnbMI88')
 MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb+srv://wtflinksofficial:wtflinksofficial@cluster0.1uld4.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
 DATABASE_NAME = os.getenv('DATABASE_NAME', 'telegram_scheduler')
 ADMIN_USER_ID = int(os.getenv('ADMIN_USER_ID', '1251111009'))

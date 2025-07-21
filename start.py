@@ -1,25 +1,30 @@
-# start.py
 import asyncio
-import threading
 from aiohttp import web
 import main
 
-# Simple health check server
 async def health_check(request):
     return web.Response(text='OK')
 
-app = web.Application()
-app.router.add_get('/', health_check)
-app.router.add_get('/health', health_check)
+async def start_web_server():
+    """Start web server without signal handlers"""
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    app.router.add_get('/health', health_check)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    site = web.TCPSite(runner, '0.0.0.0', 8000)
+    await site.start()
+    print("Health check server started on port 8000")
 
-# Run web server in thread
-def run_web_server():
-    web.run_app(app, host='0.0.0.0', port=8000)
+async def main_async():
+    """Main async function to run both services"""
+    # Start web server
+    await start_web_server()
+    
+    # Start the bot (this will run indefinitely)
+    await main.main()
 
-# Start web server in background thread
-web_thread = threading.Thread(target=run_web_server)
-web_thread.daemon = True
-web_thread.start()
-
-# Run the main bot
-asyncio.run(main.main())
+if __name__ == "__main__":
+    asyncio.run(main_async())

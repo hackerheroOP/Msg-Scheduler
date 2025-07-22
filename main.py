@@ -319,7 +319,7 @@ class MongoDBManager:
         )
 
 class TelegramSchedulerBot:
-     def __init__(self):
+    def __init__(self):
         self.app = Client(
             "scheduler_bot",
             api_id=API_ID,
@@ -330,23 +330,24 @@ class TelegramSchedulerBot:
         self.db = MongoDBManager(MONGODB_URI, DATABASE_NAME)
         self.user_last_scheduled = {}  # {user_id: {channel_id: datetime}}
         self.health_server = HealthServer(PORT)
-         async def run(self):
+
+    async def run(self):
         # Test MongoDB connection
         if not await self.db.test_connection():
             logger.error("Failed to connect to MongoDB. Exiting...")
             return
-        
+
         # Start health server
         await self.health_server.start_server()
         logger.info(f"Health server started on port {PORT}")
-        
+
         # Start Telegram bot client
         await self.app.start()
         logger.info(f"Telegram bot started successfully at {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}")
-        
+
         # Start scheduler as background task
         asyncio.create_task(self.start_scheduler())
-        
+
         # Keep running until externally stopped
         await asyncio.Event().wait()
 

@@ -321,7 +321,6 @@ class MongoDBManager:
 class TelegramSchedulerBot:
     def __init__(self):
         async def start_scheduler(self):
-        """Start the background scheduler"""
         while True:
             try:
                 await self.send_scheduled_posts()

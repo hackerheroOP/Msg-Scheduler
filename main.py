@@ -319,27 +319,28 @@ class MongoDBManager:
         )
 
 class TelegramSchedulerBot:
-    def __init__(self):
-        self.app = Client(
-            "scheduler_bot",
-            api_id=API_ID,
-            api_hash=API_HASH,
-            bot_token=BOT_TOKEN,
-            workdir="./session"
-        )
-        self.db = MongoDBManager(MONGODB_URI, DATABASE_NAME)
-        self.user_last_scheduled = {}  # {user_id: {channel_id: datetime}}
-        self.health_server = HealthServer(PORT)
+    # ... your __init__ and other methods
+
+    async def run(self):
+        # Test MongoDB connection
+        if not await self.db.test_connection():
+            logger.error("Failed to connect to MongoDB. Exiting...")
+            return
         
-        # Media group handling
-        self.media_group_buffer = defaultdict(list)
-        self.media_group_timers = {}
+        # Start health server
+        await self.health_server.start_server()
+        logger.info(f"Health server started on port {PORT}")
         
-        # Ensure session directory exists
-        os.makedirs("./session", exist_ok=True)
+        # Start Telegram bot client
+        await self.app.start()
+        logger.info(f"Telegram bot started successfully at {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}")
         
-        # Register handlers
-        self.register_handlers()
+        # Start scheduler as background task
+        asyncio.create_task(self.start_scheduler())
+        
+        # Keep running until externally stopped
+        await asyncio.Event().wait()
+
     
     def register_handlers(self):
         """Register all message and callback handlers"""
@@ -1143,11 +1144,6 @@ async def send_scheduled_posts(self):
 
 
 async def main():
-    """Main function"""
-    if not all([API_ID, API_HASH, BOT_TOKEN, MONGODB_URI, ADMIN_USER_ID]):
-        logger.error("Missing required environment variables!")
-        return
-    
     bot = TelegramSchedulerBot()
     await bot.run()
 

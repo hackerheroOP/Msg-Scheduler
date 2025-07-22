@@ -1141,6 +1141,7 @@ async def send_scheduled_posts(self):
         # Keep running
         await asyncio.Event().wait()
 
+
 async def main():
     """Main function"""
     if not all([API_ID, API_HASH, BOT_TOKEN, MONGODB_URI, ADMIN_USER_ID]):

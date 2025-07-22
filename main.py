@@ -319,6 +319,17 @@ class MongoDBManager:
         )
 
 class TelegramSchedulerBot:
+     def __init__(self):
+        self.app = Client(
+            "scheduler_bot",
+            api_id=API_ID,
+            api_hash=API_HASH,
+            bot_token=BOT_TOKEN,
+            workdir="./session"
+        )
+        self.db = MongoDBManager(MONGODB_URI, DATABASE_NAME)
+        self.user_last_scheduled = {}  # {user_id: {channel_id: datetime}}
+        self.health_server = HealthServer(PORT)
     # ... your __init__ and other methods
 
     async def run(self):
@@ -1127,7 +1138,11 @@ async def send_scheduled_posts(self):
         if not await self.db.test_connection():
             logger.error("Failed to connect to MongoDB. Exiting...")
             return
-        
+            
+        # Media group handling
+        self.media_group_buffer = defaultdict(list)
+        self.media_group_timers = {}
+        # Start health server
         # Start health server
         await self.health_server.start_server()
         logger.info(f"Health server started on port {PORT}")

@@ -320,8 +320,6 @@ class MongoDBManager:
 
 class TelegramSchedulerBot:
     def __init__(self):
-        os.makedirs("./session", exist_ok=True)
-
         self.app = Client(
             "scheduler_bot",
             api_id=API_ID,
@@ -332,38 +330,16 @@ class TelegramSchedulerBot:
         self.db = MongoDBManager(MONGODB_URI, DATABASE_NAME)
         self.user_last_scheduled = {}  # {user_id: {channel_id: datetime}}
         self.health_server = HealthServer(PORT)
-
-    async def start_scheduler(self):
-        """Start the background scheduler"""
-        while True:
-            try:
-                await self.send_scheduled_posts()
-                await asyncio.sleep(60)
-            except Exception as e:
-                logger.error(f"Scheduler error: {e}")
-                await asyncio.sleep(60)
-
-    async def run(self):
-        # Test MongoDB connection
-        if not await self.db.test_connection():
-            logger.error("Failed to connect to MongoDB. Exiting...")
-            return
-
-        # Start health server
-        await self.health_server.start_server()
-        logger.info(f"Health server started on port {PORT}")
-
-        # Start Telegram bot client
-        await self.app.start()
-        logger.info(f"Telegram bot started successfully at {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}")
-
-        # Start scheduler as background task
-        asyncio.create_task(self.start_scheduler())
-
-        # Keep running until externally stopped
-        await asyncio.Event().wait()
-
-
+        
+        # Media group handling
+        self.media_group_buffer = defaultdict(list)
+        self.media_group_timers = {}
+        
+        # Ensure session directory exists
+        os.makedirs("./session", exist_ok=True)
+        
+        # Register handlers
+        self.register_handlers()
     
     def register_handlers(self):
         """Register all message and callback handlers"""
@@ -1069,70 +1045,109 @@ Use the buttons below to get started!"""
             f"🆔 **Post ID:** `{post_id}`"
         )
     
-async def send_scheduled_posts(self):
-    """Send scheduled posts that are ready and cleanup completed channels"""
-    try:
-        pending_posts = await self.db.get_pending_posts()
-        
-        for post in pending_posts:
+    async def send_scheduled_posts(self):
+        """Send scheduled posts that are ready and cleanup completed channels"""
+        try:
+            pending_posts = await self.db.get_pending_posts()
+            
+            for post in pending_posts:
+                try:
+                    message_data = post['message_data']
+                    channel_id = message_data['channel_id']
+                    user_id = post['user_id']
+                    
+                    # Send the post (your existing sending logic remains the same)
+                    if message_data['type'] == 'media_group':
+                        # Handle media group with proper caption
+                        media_list = []
+                        album_caption = message_data.get('caption', '')
+                        
+                        for i, item in enumerate(message_data['items']):
+                            if item['type'] == 'photo':
+                                media_list.append(InputMediaPhoto(
+                                    media=item['content'],
+                                    caption=album_caption if i == 0 else ''
+                                ))
+                            elif item['type'] == 'video':
+                                media_list.append(InputMediaVideo(
+                                    media=item['content'],
+                                    caption=album_caption if i == 0 else ''
+                                ))
+                            elif item['type'] == 'animation':
+                                media_list.append(InputMediaPhoto(
+                                    media=item['content'],
+                                    caption=album_caption if i == 0 else ''
+                                ))
+                            elif item['type'] == 'document':
+                                media_list.append(InputMediaPhoto(
+                                    media=item['content'],
+                                    caption=album_caption if i == 0 else ''
+                                ))
+                        
+                        if media_list:
+                            await self.app.send_media_group(
+                                chat_id=channel_id,
+                                media=media_list
+                            )
+                    
+                    elif message_data['type'] == 'photo':
+                        await self.app.send_photo(
+                            chat_id=channel_id,
+                            photo=message_data['content'],
+                            caption=message_data['caption']
+                        )
+                    elif message_data['type'] == 'video':
+                        await self.app.send_video(
+                            chat_id=channel_id,
+                            video=message_data['content'],
+                            caption=message_data['caption']
+                        )
+                    elif message_data['type'] == 'animation':
+                        await self.app.send_animation(
+                            chat_id=channel_id,
+                            animation=message_data['content'],
+                            caption=message_data['caption']
+                        )
+                    elif message_data['type'] == 'document':
+                        await self.app.send_document(
+                            chat_id=channel_id,
+                            document=message_data['content'],
+                            caption=message_data['caption']
+                        )
+                    elif message_data['type'] == 'text':
+                        await self.app.send_message(
+                            chat_id=channel_id,
+                            text=message_data['content']
+                        )
+                    
+                    # Mark post as sent
+                    await self.db.mark_post_sent(post['_id'])
+                    logger.info(f"Sent scheduled post {post['_id']} to channel {channel_id} at {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}")
+                    
+                    # Check if this was the last post for this channel and cleanup if needed
+                    cleanup_happened = await self.db.check_and_cleanup_completed_channel(channel_id, user_id)
+                    
+                    # Clear the scheduling cache for this channel when all posts are done
+                    if cleanup_happened and user_id in self.user_last_scheduled and channel_id in self.user_last_scheduled[user_id]:
+                        # Remove the scheduling timestamp so next posts start from current time
+                        del self.user_last_scheduled[user_id][channel_id]
+                        logger.info(f"Cleared scheduling cache for channel {channel_id} - next posts will start from current time")
+                    
+                except Exception as e:
+                    logger.error(f"Error sending post {post['_id']}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error in send_scheduled_posts: {e}")
+    
+    async def start_scheduler(self):
+        """Start the background scheduler"""
+        while True:
             try:
-                message_data = post['message_data']
-                channel_id = message_data['channel_id']
-                user_id = post['user_id']
-                
-                # Send the post (your existing sending logic remains the same)
-                if message_data['type'] == 'media_group':
-                    media_list = []
-                    album_caption = message_data.get('caption', '')
-                    
-                    for i, item in enumerate(message_data['items']):
-                        caption = album_caption if i == 0 else ''
-                        if item['type'] == 'photo':
-                            media_list.append(InputMediaPhoto(media=item['content'], caption=caption))
-                        elif item['type'] == 'video':
-                            media_list.append(InputMediaVideo(media=item['content'], caption=caption))
-                        elif item['type'] == 'animation':
-                            media_list.append(InputMediaPhoto(media=item['content'], caption=caption))
-                        elif item['type'] == 'document':
-                            media_list.append(InputMediaPhoto(media=item['content'], caption=caption))
-                    
-                    if media_list:
-                        await self.app.send_media_group(chat_id=channel_id, media=media_list)
-                
-                elif message_data['type'] == 'photo':
-                    await self.app.send_photo(chat_id=channel_id, photo=message_data['content'], caption=message_data['caption'])
-                elif message_data['type'] == 'video':
-                    await self.app.send_video(chat_id=channel_id, video=message_data['content'], caption=message_data['caption'])
-                elif message_data['type'] == 'animation':
-                    await self.app.send_animation(chat_id=channel_id, animation=message_data['content'], caption=message_data['caption'])
-                elif message_data['type'] == 'document':
-                    await self.app.send_document(chat_id=channel_id, document=message_data['content'], caption=message_data['caption'])
-                elif message_data['type'] == 'text':
-                    await self.app.send_message(chat_id=channel_id, text=message_data['content'])
-                
-                # Mark post as sent
-                await self.db.mark_post_sent(post['_id'])
-                logger.info(f"Sent scheduled post {post['_id']} to channel {channel_id} at {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}")
-                
-                # Check if this was the last post for this channel and cleanup if needed
-                cleanup_happened = await self.db.check_and_cleanup_completed_channel(channel_id, user_id)
-                
-                if cleanup_happened:
-                    user_cache = self.user_last_scheduled.get(user_id)
-                    if user_cache and channel_id in user_cache:
-                        user_cache.pop(channel_id, None)
-                        logger.info(f"[Cache] Cleared scheduling memory for user {user_id}, channel {channel_id}")
-                    
-                    # Optional: delete empty user dict if no channels left
-                    if user_cache and not user_cache:
-                        self.user_last_scheduled.pop(user_id, None)
-
+                await self.send_scheduled_posts()
+                await asyncio.sleep(60)
             except Exception as e:
-                logger.error(f"Error sending post {post['_id']}: {e}")
-                
-    except Exception as e:
-        logger.error(f"Error in send_scheduled_posts: {e}")
-
+                logger.error(f"Scheduler error: {e}")
+                await asyncio.sleep(60)
     
     async def run(self):
         """Run the bot with health server"""
@@ -1140,11 +1155,7 @@ async def send_scheduled_posts(self):
         if not await self.db.test_connection():
             logger.error("Failed to connect to MongoDB. Exiting...")
             return
-            
-        # Media group handling
-        self.media_group_buffer = defaultdict(list)
-        self.media_group_timers = {}
-        # Start health server
+        
         # Start health server
         await self.health_server.start_server()
         logger.info(f"Health server started on port {PORT}")
@@ -1159,8 +1170,12 @@ async def send_scheduled_posts(self):
         # Keep running
         await asyncio.Event().wait()
 
-
 async def main():
+    """Main function"""
+    if not all([API_ID, API_HASH, BOT_TOKEN, MONGODB_URI, ADMIN_USER_ID]):
+        logger.error("Missing required environment variables!")
+        return
+    
     bot = TelegramSchedulerBot()
     await bot.run()
 

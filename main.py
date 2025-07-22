@@ -691,15 +691,20 @@ Use the buttons below to get started!"""
         elif data.startswith("confirm_delete_channel:"):
             channel_id = data.split(":", 1)[1]
             result = await self.db.delete_channel_data(channel_id, callback_query.from_user.id)
-            
-            await callback_query.message.edit_text(
-                f"✅ **Channel data deleted successfully!**\n\n"
-                f"🆔 **Channel ID:** `{channel_id}`\n"
-                f"🗑️ **Posts deleted:** {result['posts_deleted']}\n"
-                f"⚙️ **Settings deleted:** {result['settings_deleted']}\n"
-                f"📊 **Total deleted:** {result['total_deleted']}\n"
-                f"🕐 **Time:** {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}"
-            )
+
+# Clear scheduling cache if exists
+if callback_query.from_user.id in self.user_last_scheduled:
+    self.user_last_scheduled[callback_query.from_user.id].pop(channel_id, None)
+
+await callback_query.message.edit_text(
+    f"✅ **Channel data deleted successfully!**\n\n"
+    f"🆔 **Channel ID:** `{channel_id}`\n"
+    f"🗑️ **Posts deleted:** {result['posts_deleted']}\n"
+    f"⚙️ **Settings deleted:** {result['settings_deleted']}\n"
+    f"📊 **Total deleted:** {result['total_deleted']}\n"
+    f"🕐 **Time:** {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}"
+)
+
         elif data == "confirm_empty_db":
             result = await self.db.empty_database()
             

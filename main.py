@@ -643,14 +643,19 @@ Use the buttons below to get started!"""
                 "• `/setchannel -1001234567890`\n\n"
                 "💡 **Tip:** Make sure to add this bot as an admin to your channel!"
             )
+        
         elif data == "status":
             await self.show_status(callback_query.message, edit=True)
+        
         elif data == "channels":
             await self.show_channels(callback_query.message, edit=True)
+        
         elif data == "help":
             await self.show_help(callback_query.message, edit=True)
+        
         elif data == "management":
             await self.show_management_menu(callback_query.message, edit=True)
+        
         elif data == "all_channels":
             channels_data = await self.db.get_all_channels_data(callback_query.from_user.id)
             
@@ -660,7 +665,6 @@ Use the buttons below to get started!"""
                 return
             
             channels_text = "📊 **All Channels Overview**\n\n"
-            
             total_pending = 0
             total_sent = 0
             
@@ -688,23 +692,24 @@ Use the buttons below to get started!"""
             ])
             
             await callback_query.message.edit_text(channels_text, reply_markup=keyboard)
+        
         elif data.startswith("confirm_delete_channel:"):
             channel_id = data.split(":", 1)[1]
             result = await self.db.delete_channel_data(channel_id, callback_query.from_user.id)
 
-# Clear scheduling cache if exists
-if callback_query.from_user.id in self.user_last_scheduled:
-    self.user_last_scheduled[callback_query.from_user.id].pop(channel_id, None)
+            # Clear scheduling cache if exists
+            if callback_query.from_user.id in self.user_last_scheduled:
+                self.user_last_scheduled[callback_query.from_user.id].pop(channel_id, None)
 
-await callback_query.message.edit_text(
-    f"✅ **Channel data deleted successfully!**\n\n"
-    f"🆔 **Channel ID:** `{channel_id}`\n"
-    f"🗑️ **Posts deleted:** {result['posts_deleted']}\n"
-    f"⚙️ **Settings deleted:** {result['settings_deleted']}\n"
-    f"📊 **Total deleted:** {result['total_deleted']}\n"
-    f"🕐 **Time:** {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}"
-)
-
+            await callback_query.message.edit_text(
+                f"✅ **Channel data deleted successfully!**\n\n"
+                f"🆔 **Channel ID:** `{channel_id}`\n"
+                f"🗑️ **Posts deleted:** {result['posts_deleted']}\n"
+                f"⚙️ **Settings deleted:** {result['settings_deleted']}\n"
+                f"📊 **Total deleted:** {result['total_deleted']}\n"
+                f"🕐 **Time:** {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}"
+            )
+        
         elif data == "confirm_empty_db":
             result = await self.db.empty_database()
             
@@ -719,10 +724,12 @@ await callback_query.message.edit_text(
                 f"🕐 **Time:** {get_ist_time().strftime('%Y-%m-%d %H:%M:%S IST')}\n\n"
                 f"🔄 **All data has been permanently deleted!**"
             )
+        
         elif data in ["cancel_delete", "cancel_empty_db"]:
             await callback_query.message.edit_text("❌ **Operation cancelled.**")
         
         await callback_query.answer()
+
     
     async def show_management_menu(self, message: Message, edit: bool = False):
         """Show management menu"""

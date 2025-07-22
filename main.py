@@ -320,6 +320,8 @@ class MongoDBManager:
 
 class TelegramSchedulerBot:
     def __init__(self):
+        os.makedirs("./session", exist_ok=True)
+
         self.app = Client(
             "scheduler_bot",
             api_id=API_ID,
@@ -330,6 +332,8 @@ class TelegramSchedulerBot:
         self.db = MongoDBManager(MONGODB_URI, DATABASE_NAME)
         self.user_last_scheduled = {}  # {user_id: {channel_id: datetime}}
         self.health_server = HealthServer(PORT)
+
+
 
     async def run(self):
         # Test MongoDB connection

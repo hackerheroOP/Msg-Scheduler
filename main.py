@@ -320,6 +320,16 @@ class MongoDBManager:
 
 class TelegramSchedulerBot:
     def __init__(self):
+        async def start_scheduler(self):
+        """Start the background scheduler"""
+        while True:
+            try:
+                await self.send_scheduled_posts()
+                await asyncio.sleep(60)
+            except Exception as e:
+                logger.error(f"Scheduler error: {e}")
+                await asyncio.sleep(60)
+
         os.makedirs("./session", exist_ok=True)
 
         self.app = Client(
@@ -1124,16 +1134,6 @@ async def send_scheduled_posts(self):
     except Exception as e:
         logger.error(f"Error in send_scheduled_posts: {e}")
 
-    
-    async def start_scheduler(self):
-        """Start the background scheduler"""
-        while True:
-            try:
-                await self.send_scheduled_posts()
-                await asyncio.sleep(60)
-            except Exception as e:
-                logger.error(f"Scheduler error: {e}")
-                await asyncio.sleep(60)
     
     async def run(self):
         """Run the bot with health server"""

@@ -34,7 +34,6 @@ MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb+srv://wtflinksofficial:wtflinkso
 DATABASE_NAME = os.getenv('DATABASE_NAME', 'telegram_scheduler')
 ADMIN_USER_ID = int(os.getenv('ADMIN_USER_ID', '1251111009'))
 PORT = int(os.getenv('PORT', 8000))
-
 # Timezone configuration
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -377,6 +376,7 @@ class TelegramSchedulerBot:
 
     async def start_command(self, client: Client, message: Message):
         if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
             return
         current_channel = await self.db.get_current_channel(message.from_user.id)
         channel_status = f"✅ **{current_channel.get('channel_name', 'Unknown')}**" if current_channel else "❌ **Not configured**"
@@ -403,6 +403,7 @@ Use the buttons below to get started!"""
 
     async def set_channel_command(self, client: Client, message: Message):
         if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
             return
         if len(message.command) < 2:
             channels = await self.db.get_user_channels(message.from_user.id)
@@ -462,11 +463,13 @@ Use the buttons below to get started!"""
 
     async def status_command(self, client: Client, message: Message):
         if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
             return
         await self.show_status(message)
 
     async def clear_command(self, client: Client, message: Message):
         if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
             return
         current_channel = await self.db.get_current_channel(message.from_user.id)
         if not current_channel:
@@ -487,16 +490,19 @@ Use the buttons below to get started!"""
 
     async def help_command(self, client: Client, message: Message):
         if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
             return
         await self.show_help(message)
 
     async def channels_command(self, client: Client, message: Message):
         if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
             return
         await self.show_channels(message)
 
     async def delete_channel_command(self, client: Client, message: Message):
         if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
             return
         if len(message.command) < 2:
             await message.reply_text(
@@ -553,6 +559,7 @@ Use the buttons below to get started!"""
 
     async def all_channels_command(self, client: Client, message: Message):
         if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
             return
         channels_data = await self.db.get_all_channels_data(message.from_user.id)
         if not channels_data:
@@ -584,6 +591,7 @@ Use the buttons below to get started!"""
 
     async def pause_command(self, client: Client, message: Message):
         if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
             return
         if len(message.command) >= 2:
             channel_id = message.command[1]
@@ -610,6 +618,7 @@ Use the buttons below to get started!"""
 
     async def resume_command(self, client: Client, message: Message):
         if message.from_user.id != ADMIN_USER_ID:
+            await message.reply_text("❌ **Unauthorized access!**")
             return
         if len(message.command) >= 2:
             channel_id = message.command[1]
@@ -657,6 +666,7 @@ Use the buttons below to get started!"""
 
     async def handle_callback(self, client: Client, callback_query: CallbackQuery):
         if callback_query.from_user.id != ADMIN_USER_ID:
+            await callback_query.answer("❌ Unauthorized access!", show_alert=True)
             return
         data = callback_query.data
         if data == "set_channel":

@@ -294,30 +294,31 @@ class MongoDBManager:
     async def is_channel_paused(self, user_id: int, channel_id: str) -> bool:
         s = await self.get_channel_setting(user_id, channel_id)
         return bool(s and s.get('paused'))
-
-    async def shift_pending_posts_by(self, user_id: int, channel_id: str, delta: timedelta) -> int:
-    """Shift all pending posts scheduled_time by delta (safe Python version)."""
-        cursor = self.scheduled_posts.find({
-        'user_id': user_id,
-        'channel_id': channel_id,
-        'status': 'pending'
-    })
-    updated = 0
-        async for doc in cursor:
-        old = doc.get('scheduled_time')
         
-        # If scheduled_time is already corrupted ($dateAdd object), reset it
+    async def shift_pending_posts_by(self, user_id: int, channel_id: str, delta: timedelta) -> int:
+        """Shift all pending posts scheduled_time by delta (safe Python version)."""
+        cursor = self.scheduled_posts.find({
+            'user_id': user_id,
+            'channel_id': channel_id,
+            'status': 'pending'
+        })
+        updated = 0
+        async for doc in cursor:
+            old = doc.get('scheduled_time')
+
+            # If scheduled_time is already corrupted ($dateAdd object), reset it
             if isinstance(old, dict):
-            logger.warning(f"Corrupted scheduled_time found in post {doc['_id']}, fixing...")
-            old = datetime.utcnow()  # fallback: reset to now
+                logger.warning(f"Corrupted scheduled_time found in post {doc['_id']}, fixing...")
+                old = datetime.utcnow()  # fallback: reset to now
 
             new_dt = old + delta
             await self.scheduled_posts.update_one(
-            {'_id': doc['_id']},
-            {'$set': {'scheduled_time': new_dt}}
-        )
-        updated += 1
+                {'_id': doc['_id']},
+                {'$set': {'scheduled_time': new_dt}}
+            )
+            updated += 1
         return updated
+
 
 class TelegramSchedulerBot:
     def __init__(self):

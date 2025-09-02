@@ -295,50 +295,26 @@ class MongoDBManager:
         s = await self.get_channel_setting(user_id, channel_id)
         return bool(s and s.get('paused'))
 
-    async def shift_pending_posts_by(self, user_id: int, channel_id: str, delta: timedelta) -> int:
-        """Shift all pending posts scheduled_time by delta."""
-        # Try MongoDB 5.0+ $dateAdd. If not supported, fallback to Python loop.
-        shift_ms = int(delta.total_seconds() * 1000)
-        try:
-            result = await self.scheduled_posts.update_many(
-                {
-                    'user_id': user_id,
-                    'channel_id': channel_id,
-                    'status': 'pending'
-                },
-                {
-                    '$set': {
-                        'scheduled_time': {
-                            '$dateAdd': {
-                                'startDate': '$scheduled_time',
-                                'unit': 'millisecond',
-                                'amount': shift_ms
-                            }
-                        }
-                    }
-                }
-            )
-            # If matched but not modified, assume operator unsupported and fallback
-            if result.matched_count > 0 and result.modified_count == 0:
-                raise RuntimeError("dateAdd not applied; fallback")
-            return result.modified_count
-        except Exception:
-            # Fallback: fetch and update each document
-            cursor = self.scheduled_posts.find({
-                'user_id': user_id,
-                'channel_id': channel_id,
-                'status': 'pending'
-            })
-            updated = 0
-            async for doc in cursor:
-                old = doc['scheduled_time']
-                new_dt = old + delta
-                await self.scheduled_posts.update_one(
-                    {'_id': doc['_id']},
-                    {'$set': {'scheduled_time': new_dt}}
-                )
-                updated += 1
-            return updated
+async def shift_pending_posts_by(self, user_id: int, channel_id: str, delta: timedelta) -> int:
+    """Shift all pending posts scheduled_time by delta (safe Python loop)."""
+    cursor = self.scheduled_posts.find({
+        'user_id': user_id,
+        'channel_id': channel_id,
+        'status': 'pending'
+    })
+    updated = 0
+    async for doc in cursor:
+        old = doc['scheduled_time']
+        if isinstance(old, dict):
+            # Fix corrupted docs where $dateAdd got stored
+            continue
+        new_dt = old + delta
+        await self.scheduled_posts.update_one(
+            {'_id': doc['_id']},
+            {'$set': {'scheduled_time': new_dt}}
+        )
+        updated += 1
+    return updated
 
 class TelegramSchedulerBot:
     def __init__(self):

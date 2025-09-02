@@ -296,7 +296,7 @@ class MongoDBManager:
         return bool(s and s.get('paused'))
 
 async def shift_pending_posts_by(self, user_id: int, channel_id: str, delta: timedelta) -> int:
-    """Shift all pending posts scheduled_time by delta (safe Python loop)."""
+    """Shift all pending posts scheduled_time by delta (safe Python version)."""
     cursor = self.scheduled_posts.find({
         'user_id': user_id,
         'channel_id': channel_id,
@@ -304,10 +304,13 @@ async def shift_pending_posts_by(self, user_id: int, channel_id: str, delta: tim
     })
     updated = 0
     async for doc in cursor:
-        old = doc['scheduled_time']
+        old = doc.get('scheduled_time')
+        
+        # If scheduled_time is already corrupted ($dateAdd object), reset it
         if isinstance(old, dict):
-            # Fix corrupted docs where $dateAdd got stored
-            continue
+            logger.warning(f"Corrupted scheduled_time found in post {doc['_id']}, fixing...")
+            old = datetime.utcnow()  # fallback: reset to now
+
         new_dt = old + delta
         await self.scheduled_posts.update_one(
             {'_id': doc['_id']},

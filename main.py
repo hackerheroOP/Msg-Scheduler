@@ -883,8 +883,8 @@ Use the buttons below to get started!"""
             logger.info(f"Starting fresh schedule for channel {channel_id} from current time: {base_time}")
         else:
             base_time = self.user_last_scheduled[user_id][channel_id]
-        random_hours = random.uniform(1, 2)
-        random_minutes = random.randint(0, 26)
+        random_hours = random.uniform(1, 4)
+        random_minutes = random.randint(20, 59)
         next_time = base_time + timedelta(hours=random_hours, minutes=random_minutes)
         self.user_last_scheduled[user_id][channel_id] = next_time
         return next_time
